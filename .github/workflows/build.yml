@@ -1,62 +1,54 @@
-name: Build Tuneful
+name: Build Mac Mouse Fix
 
 on:
   push:
-    branches: [ main, master ]
-  pull_request:
-    branches: [ main, master ]
-  workflow_dispatch: # allows manual trigger from GitHub UI
+    branches: [master]
+  workflow_dispatch:
 
 jobs:
   build:
-    runs-on: macos-latest
-
+    runs-on: macos-15
     steps:
-      - name: Checkout source
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
 
-      - name: Select Xcode version
-        run: sudo xcode-select -s /Applications/Xcode_16.app/Contents/Developer
-
-      - name: Show Xcode version
-        run: xcodebuild -version
-
-      - name: Resolve Swift Package dependencies
+      - name: Resolve SPM dependencies
         run: |
-          xcodebuild -resolvePackageDependencies \
-            -project Tuneful.xcodeproj \
-            -scheme Tuneful
+          xcodebuild \
+            -project "Mouse Fix.xcodeproj" \
+            -resolvePackageDependencies \
+            -clonedSourcePackagesDirPath "$GITHUB_WORKSPACE/spm-packages"
 
       - name: Build
         run: |
+          set -o pipefail
           xcodebuild \
-            -project Tuneful.xcodeproj \
-            -scheme Tuneful \
+            -project "Mouse Fix.xcodeproj" \
+            -scheme "App" \
             -configuration Release \
-            -destination 'platform=macOS' \
-            CODE_SIGN_IDENTITY="" \
-            CODE_SIGNING_REQUIRED=NO \
+            -clonedSourcePackagesDirPath "$GITHUB_WORKSPACE/spm-packages" \
             CODE_SIGNING_ALLOWED=NO \
-            build
-
-      - name: Copy .app to output folder
-        run: |
-          BUILD_DIR=$(xcodebuild \
-            -project Tuneful.xcodeproj \
-            -scheme Tuneful \
-            -configuration Release \
-            -destination 'platform=macOS' \
-            CODE_SIGN_IDENTITY="" \
             CODE_SIGNING_REQUIRED=NO \
-            CODE_SIGNING_ALLOWED=NO \
-            build | grep "BUILT_PRODUCTS_DIR" | head -1 | awk '{print $3}')
-          echo "Built products dir: $BUILD_DIR"
-          mkdir -p output
-          cp -R "$BUILD_DIR/Tuneful.app" output/
+            CODE_SIGN_IDENTITY="" \
+            2>&1 | tee build.log | grep -E "error:|warning:|BUILD FAILED|BUILD SUCCEEDED" || true
+          echo "--- FULL ERROR CONTEXT ---"
+          grep -A 5 "error:" build.log || echo "No error lines found"
+          grep -E "BUILD FAILED|BUILD SUCCEEDED" build.log
+          # Exit with xcodebuild's real exit code
+          grep -q "BUILD SUCCEEDED" build.log
 
-      - name: Upload Tuneful.app as artifact
+      - name: Upload artifact
+        if: success()
         uses: actions/upload-artifact@v4
         with:
-          name: Tuneful
-          path: output/Tuneful.app
-          retention-days: 7
+          name: MacMouseFix-patched
+          path: |
+            ~/Library/Developer/Xcode/DerivedData/*/Build/Products/Release/*.app
+
+      - name: Upload build log on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-log
+          path: build.log
