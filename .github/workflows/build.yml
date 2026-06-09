@@ -31,12 +31,9 @@ jobs:
         run: |
           APP="$GITHUB_WORKSPACE/build/Build/Products/Release/Mac Mouse Fix.app"
           HELPER="$APP/Contents/Library/LoginItems/Mac Mouse Fix Helper.app"
-
-          # Use entitlements straight from source tree
           HELPER_ENT="$GITHUB_WORKSPACE/Helper/SupportFiles/Helper.entitlements"
           APP_ENT="$GITHUB_WORKSPACE/App/SupportFiles/App.entitlements"
 
-          # Sign frameworks and dylibs first
           find "$APP" -type f -name "*.dylib" | while read f; do
             codesign --force --sign - "$f" 2>/dev/null || true
           done
@@ -44,7 +41,6 @@ jobs:
             codesign --force --deep --sign - "$f" 2>/dev/null || true
           done
 
-          # Sign helper and main app with source entitlements
           codesign --force --sign - --entitlements "$HELPER_ENT" "$HELPER"
           codesign --force --sign - --entitlements "$APP_ENT" "$APP"
 
@@ -55,8 +51,9 @@ jobs:
 
       - name: Package
         run: |
-          cd "$GITHUB_WORKSPACE/build/Build/Products/Release"
-          zip -qr "$GITHUB_WORKSPACE/MacMouseFix-patched.zip" "Mac Mouse Fix.app"
+          ditto -c -k --sequesterRsrc --keepParent \
+            "$GITHUB_WORKSPACE/build/Build/Products/Release/Mac Mouse Fix.app" \
+            "$GITHUB_WORKSPACE/MacMouseFix-patched.zip"
 
       - name: Upload app
         uses: actions/upload-artifact@v4
