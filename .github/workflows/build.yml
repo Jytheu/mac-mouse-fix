@@ -1,0 +1,29 @@
+name: Build Mac Mouse Fix
+
+on:
+  push:
+    branches: [master]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Build
+        run: |
+          xcodebuild \
+            -project "Mouse Fix.xcodeproj" \
+            -scheme "App" \
+            -configuration Release \
+            -derivedDataPath build/ \
+            CODE_SIGNING_ALLOWED=NO
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: MacMouseFix-patched
+          path: build/Build/Products/Release/*.app
