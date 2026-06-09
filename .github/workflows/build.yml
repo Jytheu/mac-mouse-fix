@@ -27,31 +27,14 @@ jobs:
             2>&1 | tee build.log
           grep -q "BUILD SUCCEEDED" build.log
 
-      - name: Ad-hoc sign with entitlements
+      - name: Ad-hoc sign
         run: |
           APP="$GITHUB_WORKSPACE/build/Build/Products/Release/Mac Mouse Fix.app"
           HELPER="$APP/Contents/Library/LoginItems/Mac Mouse Fix Helper.app"
-          HELPER_BIN="$HELPER/Contents/MacOS/Mac Mouse Fix Helper"
-          MAIN_BIN="$APP/Contents/MacOS/Mac Mouse Fix"
 
-          # Extract entitlements embedded in the binaries at compile time
-          # (Xcode embeds them even when code signing is disabled)
-          extract_entitlements() {
-            local bin="$1"
-            local out="$2"
-            # Try extracting from __TEXT,__entitlements section
-            xcrun segedit "$bin" -extract __TEXT __entitlements "$out" 2>/dev/null || \
-            codesign -d --entitlements "$out" "$bin" 2>/dev/null || \
-            echo '<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd"><plist version="1.0"><dict></dict></plist>' > "$out"
-          }
-
-          extract_entitlements "$HELPER_BIN" /tmp/helper-entitlements.plist
-          extract_entitlements "$MAIN_BIN" /tmp/main-entitlements.plist
-
-          echo "--- Helper entitlements ---"
-          cat /tmp/helper-entitlements.plist || echo "(empty)"
-          echo "--- Main entitlements ---"
-          cat /tmp/main-entitlements.plist || echo "(empty)"
+          # Use entitlements straight from source tree
+          HELPER_ENT="$GITHUB_WORKSPACE/Helper/SupportFiles/Helper.entitlements"
+          APP_ENT="$GITHUB_WORKSPACE/App/SupportFiles/App.entitlements"
 
           # Sign frameworks and dylibs first
           find "$APP" -type f -name "*.dylib" | while read f; do
@@ -61,14 +44,13 @@ jobs:
             codesign --force --deep --sign - "$f" 2>/dev/null || true
           done
 
-          # Sign helper with its entitlements
-          codesign --force --sign - --entitlements /tmp/helper-entitlements.plist "$HELPER"
+          # Sign helper and main app with source entitlements
+          codesign --force --sign - --entitlements "$HELPER_ENT" "$HELPER"
+          codesign --force --sign - --entitlements "$APP_ENT" "$APP"
 
-          # Sign main app with its entitlements
-          codesign --force --sign - --entitlements /tmp/main-entitlements.plist "$APP"
-
-          echo "--- Verify ---"
+          echo "--- Verify Helper ---"
           codesign -dv --entitlements - "$HELPER"
+          echo "--- Verify App ---"
           codesign -dv --entitlements - "$APP"
 
       - name: Package
