@@ -27,12 +27,36 @@ jobs:
             2>&1 | tee build.log
           grep -q "BUILD SUCCEEDED" build.log
 
+      - name: Ad-hoc sign
+        run: |
+          APP="$GITHUB_WORKSPACE/build/Build/Products/Release/Mac Mouse Fix.app"
+          # Sign all nested binaries and frameworks first, then the outer app
+          find "$APP" -type f \( -name "*.dylib" -o -name "*.framework" \) | while read f; do
+            codesign --force --deep --sign - "$f" 2>/dev/null || true
+          done
+          find "$APP/Contents" -type f -perm +0111 | while read f; do
+            codesign --force --sign - "$f" 2>/dev/null || true
+          done
+          # Sign Helper app bundle
+          HELPER="$APP/Contents/Library/LoginItems/Mac Mouse Fix Helper.app"
+          codesign --force --deep --sign - "$HELPER"
+          # Sign main app
+          codesign --force --deep --sign - "$APP"
+          echo "Signing done"
+          codesign --verify --verbose "$APP" || true
+          codesign --verify --verbose "$HELPER" || true
+
+      - name: Package
+        run: |
+          APP="$GITHUB_WORKSPACE/build/Build/Products/Release/Mac Mouse Fix.app"
+          cd "$GITHUB_WORKSPACE/build/Build/Products/Release"
+          zip -qr "$GITHUB_WORKSPACE/MacMouseFix-patched.zip" "Mac Mouse Fix.app"
+
       - name: Upload app
-        if: success()
         uses: actions/upload-artifact@v4
         with:
           name: MacMouseFix-patched
-          path: build/Build/Products/Release/*.app
+          path: MacMouseFix-patched.zip
 
       - name: Upload build log on failure
         if: failure()
