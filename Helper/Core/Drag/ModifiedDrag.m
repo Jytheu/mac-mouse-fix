@@ -16,6 +16,7 @@
 
 #import "SubPixelator.h"
 #import <Cocoa/Cocoa.h>
+#import <os/log.h>
 
 #import "ModificationUtility.h"
 #import "MFMessagePort.h"
@@ -122,6 +123,7 @@ static ModifiedDragState _drag;
         CFMachPortRef eventTap = [ModificationUtility createEventTapWithLocation:location mask:mask option:option placement:placement callback:eventTapCallBack runLoop:GlobalEventTapThread.runLoop];
         
         _drag.eventTap = eventTap;
+        os_log(OS_LOG_DEFAULT, "MMF-DIAG: ModifiedDrag eventTap created: %s", eventTap ? "SUCCESS" : "FAILED (nil) - Accessibility permission likely blocking tap");
     }
 }
 
@@ -199,6 +201,7 @@ void initDragState_Unsafe(void) {
     
     CGEventTapEnable(_drag.eventTap, true);
     DDLogDebug(@"\nEnabled drag eventTap");
+    os_log(OS_LOG_DEFAULT, "MMF-DIAG: ModifiedDrag eventTap enabled: %s", CGEventTapIsEnabled(_drag.eventTap) ? "YES" : "NO - tap is nil or blocked");
 }
 
 static CGEventRef __nullable eventTapCallBack(CGEventTapProxy proxy, CGEventType type, CGEventRef event, void * __nullable userInfo) {
@@ -210,6 +213,7 @@ static CGEventRef __nullable eventTapCallBack(CGEventTapProxy proxy, CGEventType
     if (type == kCGEventTapDisabledByTimeout || type == kCGEventTapDisabledByUserInput) {
         
         DDLogDebug(@"ModifiedDrag eventTap was disabled by %@", type == kCGEventTapDisabledByTimeout ? @"timeout. Re-enabling." : @"user input.");
+        os_log(OS_LOG_DEFAULT, "MMF-DIAG: ModifiedDrag eventTap DISABLED by %s", type == kCGEventTapDisabledByTimeout ? "TIMEOUT" : "USER_INPUT/macOS");
         
         if (type == kCGEventTapDisabledByTimeout) {
 //            assert(false); /// Not sure this ever times out
