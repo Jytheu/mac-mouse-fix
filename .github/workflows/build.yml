@@ -13,13 +13,6 @@ jobs:
         with:
           submodules: recursive
 
-      - name: Resolve SPM dependencies
-        run: |
-          xcodebuild \
-            -project "Mouse Fix.xcodeproj" \
-            -resolvePackageDependencies \
-            -clonedSourcePackagesDirPath "$GITHUB_WORKSPACE/spm-packages"
-
       - name: Build
         run: |
           set -o pipefail
@@ -27,24 +20,19 @@ jobs:
             -project "Mouse Fix.xcodeproj" \
             -scheme "App" \
             -configuration Release \
-            -clonedSourcePackagesDirPath "$GITHUB_WORKSPACE/spm-packages" \
+            -derivedDataPath "$GITHUB_WORKSPACE/build" \
             CODE_SIGNING_ALLOWED=NO \
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGN_IDENTITY="" \
-            2>&1 | tee build.log | grep -E "error:|warning:|BUILD FAILED|BUILD SUCCEEDED" || true
-          echo "--- FULL ERROR CONTEXT ---"
-          grep -A 5 "error:" build.log || echo "No error lines found"
-          grep -E "BUILD FAILED|BUILD SUCCEEDED" build.log
-          # Exit with xcodebuild's real exit code
+            2>&1 | tee build.log
           grep -q "BUILD SUCCEEDED" build.log
 
-      - name: Upload artifact
+      - name: Upload app
         if: success()
         uses: actions/upload-artifact@v4
         with:
           name: MacMouseFix-patched
-          path: |
-            ~/Library/Developer/Xcode/DerivedData/*/Build/Products/Release/*.app
+          path: build/Build/Products/Release/*.app
 
       - name: Upload build log on failure
         if: failure()
