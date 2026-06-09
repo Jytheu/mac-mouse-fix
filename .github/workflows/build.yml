@@ -27,28 +27,52 @@ jobs:
             2>&1 | tee build.log
           grep -q "BUILD SUCCEEDED" build.log
 
-      - name: Ad-hoc sign
+      - name: Ad-hoc sign with entitlements
         run: |
           APP="$GITHUB_WORKSPACE/build/Build/Products/Release/Mac Mouse Fix.app"
-          # Sign all nested binaries and frameworks first, then the outer app
-          find "$APP" -type f \( -name "*.dylib" -o -name "*.framework" \) | while read f; do
-            codesign --force --deep --sign - "$f" 2>/dev/null || true
-          done
-          find "$APP/Contents" -type f -perm +0111 | while read f; do
+          HELPER="$APP/Contents/Library/LoginItems/Mac Mouse Fix Helper.app"
+          HELPER_BIN="$HELPER/Contents/MacOS/Mac Mouse Fix Helper"
+          MAIN_BIN="$APP/Contents/MacOS/Mac Mouse Fix"
+
+          # Extract entitlements embedded in the binaries at compile time
+          # (Xcode embeds them even when code signing is disabled)
+          extract_entitlements() {
+            local bin="$1"
+            local out="$2"
+            # Try extracting from __TEXT,__entitlements section
+            xcrun segedit "$bin" -extract __TEXT __entitlements "$out" 2>/dev/null || \
+            codesign -d --entitlements "$out" "$bin" 2>/dev/null || \
+            echo '<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd"><plist version="1.0"><dict></dict></plist>' > "$out"
+          }
+
+          extract_entitlements "$HELPER_BIN" /tmp/helper-entitlements.plist
+          extract_entitlements "$MAIN_BIN" /tmp/main-entitlements.plist
+
+          echo "--- Helper entitlements ---"
+          cat /tmp/helper-entitlements.plist || echo "(empty)"
+          echo "--- Main entitlements ---"
+          cat /tmp/main-entitlements.plist || echo "(empty)"
+
+          # Sign frameworks and dylibs first
+          find "$APP" -type f -name "*.dylib" | while read f; do
             codesign --force --sign - "$f" 2>/dev/null || true
           done
-          # Sign Helper app bundle
-          HELPER="$APP/Contents/Library/LoginItems/Mac Mouse Fix Helper.app"
-          codesign --force --deep --sign - "$HELPER"
-          # Sign main app
-          codesign --force --deep --sign - "$APP"
-          echo "Signing done"
-          codesign --verify --verbose "$APP" || true
-          codesign --verify --verbose "$HELPER" || true
+          find "$APP" -type d -name "*.framework" | while read f; do
+            codesign --force --deep --sign - "$f" 2>/dev/null || true
+          done
+
+          # Sign helper with its entitlements
+          codesign --force --sign - --entitlements /tmp/helper-entitlements.plist "$HELPER"
+
+          # Sign main app with its entitlements
+          codesign --force --sign - --entitlements /tmp/main-entitlements.plist "$APP"
+
+          echo "--- Verify ---"
+          codesign -dv --entitlements - "$HELPER"
+          codesign -dv --entitlements - "$APP"
 
       - name: Package
         run: |
-          APP="$GITHUB_WORKSPACE/build/Build/Products/Release/Mac Mouse Fix.app"
           cd "$GITHUB_WORKSPACE/build/Build/Products/Release"
           zip -qr "$GITHUB_WORKSPACE/MacMouseFix-patched.zip" "Mac Mouse Fix.app"
 
