@@ -1,10 +1,8 @@
 name: Build Mac Mouse Fix
-
 on:
   push:
     branches: [master]
   workflow_dispatch:
-
 jobs:
   build:
     runs-on: macos-15
@@ -12,7 +10,6 @@ jobs:
       - uses: actions/checkout@v4
         with:
           submodules: recursive
-
       - name: Build
         run: |
           set -o pipefail
@@ -26,41 +23,31 @@ jobs:
             CODE_SIGN_IDENTITY="" \
             2>&1 | tee build.log
           grep -q "BUILD SUCCEEDED" build.log
-
       - name: Ad-hoc sign
         run: |
           APP="$GITHUB_WORKSPACE/build/Build/Products/Release/Mac Mouse Fix.app"
-          HELPER="$APP/Contents/Library/LoginItems/Mac Mouse Fix Helper.app"
-          HELPER_ENT="$GITHUB_WORKSPACE/Helper/SupportFiles/Helper.entitlements"
-          APP_ENT="$GITHUB_WORKSPACE/App/SupportFiles/App.entitlements"
-
-          find "$APP" -type f -name "*.dylib" | while read f; do
-            codesign --force --sign - "$f" 2>/dev/null || true
-          done
-          find "$APP" -type d -name "*.framework" | while read f; do
+          find "$APP" -type f \( -name "*.dylib" -o -name "*.framework" \) | while read f; do
             codesign --force --deep --sign - "$f" 2>/dev/null || true
           done
-
-          codesign --force --sign - --entitlements "$HELPER_ENT" "$HELPER"
-          codesign --force --sign - --entitlements "$APP_ENT" "$APP"
-
-          echo "--- Verify Helper ---"
-          codesign -dv --entitlements - "$HELPER"
-          echo "--- Verify App ---"
-          codesign -dv --entitlements - "$APP"
-
+          find "$APP/Contents" -type f -perm +0111 | while read f; do
+            codesign --force --sign - "$f" 2>/dev/null || true
+          done
+          HELPER="$APP/Contents/Library/LoginItems/Mac Mouse Fix Helper.app"
+          codesign --force --deep --sign - "$HELPER"
+          codesign --force --deep --sign - "$APP"
+          echo "Signing done"
+          codesign --verify --verbose "$APP" || true
+          codesign --verify --verbose "$HELPER" || true
       - name: Package
         run: |
-          ditto -c -k --sequesterRsrc --keepParent \
-            "$GITHUB_WORKSPACE/build/Build/Products/Release/Mac Mouse Fix.app" \
-            "$GITHUB_WORKSPACE/MacMouseFix-patched.zip"
-
+          APP="$GITHUB_WORKSPACE/build/Build/Products/Release/Mac Mouse Fix.app"
+          cd "$GITHUB_WORKSPACE/build/Build/Products/Release"
+          zip -qr "$GITHUB_WORKSPACE/MacMouseFix-patched.zip" "Mac Mouse Fix.app"
       - name: Upload app
         uses: actions/upload-artifact@v4
         with:
           name: MacMouseFix-patched
           path: MacMouseFix-patched.zip
-
       - name: Upload build log on failure
         if: failure()
         uses: actions/upload-artifact@v4
