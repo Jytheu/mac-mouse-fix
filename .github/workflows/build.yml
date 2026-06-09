@@ -1,29 +1,62 @@
-name: Build Mac Mouse Fix
+name: Build Tuneful
 
 on:
   push:
-    branches: [master]
-  workflow_dispatch:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+  workflow_dispatch: # allows manual trigger from GitHub UI
 
 jobs:
   build:
     runs-on: macos-latest
+
     steps:
-      - uses: actions/checkout@v4
-        with:
-          submodules: recursive
+      - name: Checkout source
+        uses: actions/checkout@v4
+
+      - name: Select Xcode version
+        run: sudo xcode-select -s /Applications/Xcode_16.app/Contents/Developer
+
+      - name: Show Xcode version
+        run: xcodebuild -version
+
+      - name: Resolve Swift Package dependencies
+        run: |
+          xcodebuild -resolvePackageDependencies \
+            -project Tuneful.xcodeproj \
+            -scheme Tuneful
 
       - name: Build
         run: |
           xcodebuild \
-            -project "Mouse Fix.xcodeproj" \
-            -scheme "App" \
+            -project Tuneful.xcodeproj \
+            -scheme Tuneful \
             -configuration Release \
-            -derivedDataPath build/ \
-            CODE_SIGNING_ALLOWED=NO
+            -destination 'platform=macOS' \
+            CODE_SIGN_IDENTITY="" \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGNING_ALLOWED=NO \
+            build
 
-      - name: Upload artifact
+      - name: Copy .app to output folder
+        run: |
+          BUILD_DIR=$(xcodebuild \
+            -project Tuneful.xcodeproj \
+            -scheme Tuneful \
+            -configuration Release \
+            -destination 'platform=macOS' \
+            CODE_SIGN_IDENTITY="" \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGNING_ALLOWED=NO \
+            build | grep "BUILT_PRODUCTS_DIR" | head -1 | awk '{print $3}')
+          echo "Built products dir: $BUILD_DIR"
+          mkdir -p output
+          cp -R "$BUILD_DIR/Tuneful.app" output/
+
+      - name: Upload Tuneful.app as artifact
         uses: actions/upload-artifact@v4
         with:
-          name: MacMouseFix-patched
-          path: build/Build/Products/Release/*.app
+          name: Tuneful
+          path: output/Tuneful.app
+          retention-days: 7
